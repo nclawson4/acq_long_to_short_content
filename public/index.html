@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Make long-to-short form content 100x cheaper</title>
+<!-- Defer-preload the explainer video. The browser starts pulling bytes
+     ~1.5s after parse so it's ready by the time someone hits Go, but we
+     don't compete with the LCP image/font on first paint. -->
+<link rel="preload" href="editor.mp4" as="video" type="video/mp4" id="video-preload" disabled />
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --bg-2: #f6f4f1;
+    --ink: #0f0f0f;
+    --muted: #5a5a5a;
+    --accent: #ea580c;
+    --accent-hover: #c2410c;
+    --line: rgba(0,0,0,0.08);
+    --input-bg: #f7f7f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;       /* exactly one viewport, no scrolling */
+  }
+
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+  }
+
+  .hero {
+    width: 100%;
+    padding: 32px;
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 48px;
+    align-items: center;
+  }
+  .hero-text { max-width: 580px; }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: rgba(234, 88, 12, 0.08);
+    padding: 6px 12px; border-radius: 999px;
+    margin-bottom: 22px;
+  }
+  .hero h1 {
+    font-size: clamp(3rem, 7vw, 6rem);
+    line-height: 1.0;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin-bottom: 32px;
+    color: var(--ink);
+  }
+  .hero h1 .accent {
+    background: linear-gradient(180deg, var(--accent) 0%, #f97316 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+  }
+  .hero p.lede {
+    font-size: 18px; line-height: 1.55;
+    color: var(--muted);
+    margin-bottom: 32px;
+  }
+  .hero p.lede b { color: var(--ink); font-weight: 600; }
+
+  /* prompt input row */
+  .prompt-form {
+    display: flex;
+    gap: 8px;
+    background: var(--input-bg);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    max-width: 560px;
+  }
+  .prompt-form:focus-within {
+    border-color: rgba(234, 88, 12, 0.55);
+    box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.12);
+    background: white;
+  }
+  .prompt-input {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 14px 12px;
+    font: inherit;
+    font-size: 16px;
+    color: var(--ink);
+    outline: none;
+    min-width: 0;
+  }
+  .prompt-input::placeholder { color: #888; }
+  .go-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--ink); color: var(--bg);
+    border: 0;
+    padding: 12px 22px;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .go-btn:hover { background: var(--accent); }
+  .go-btn:active { transform: scale(0.98); }
+  .go-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .go-btn .arrow { transition: transform 0.15s; }
+  .go-btn:hover .arrow { transform: translateX(3px); }
+
+  /* sibling download button — slides in beside Go once an MP4 is ready */
+  .download-btn {
+    display: none;
+    align-items: center; gap: 6px;
+    background: white;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    padding: 12px 18px;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .download-btn.shown {
+    display: inline-flex;
+    animation: slide-in 0.32s cubic-bezier(0.18, 0.84, 0.32, 1.2) both;
+  }
+  .download-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(234, 88, 12, 0.04);
+  }
+  .download-btn:active { transform: scale(0.98); }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-12px) scale(0.9); }
+    to   { opacity: 1; transform: translateX(0) scale(1); }
+  }
+
+  .prompt-hint {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #888;
+  }
+  .prompt-hint kbd {
+    background: white;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    color: var(--muted);
+  }
+
+  /* the stage holding the editor character / video on the right */
+  .hero-art {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    max-width: 560px;
+    justify-self: end;
+  }
+  .hero-art::before {
+    content: "";
+    position: absolute; inset: 8%;
+    background:
+      radial-gradient(circle at 50% 60%, rgba(234, 88, 12, 0.06), transparent 70%),
+      var(--bg-2);
+    border-radius: 50%;
+    filter: blur(8px);
+    z-index: 0;
+  }
+  #char, #char-video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
+    image-rendering: -webkit-optimize-contrast;
+  }
+  #char-video {
+    opacity: 0;
+    transition: opacity 0.25s ease-out;
+  }
+  .hero-art.playing #char-video { opacity: 1; }
+  .hero-art.playing #char { opacity: 0; }
+  #char { transition: opacity 0.2s ease-out; }
+
+  /* ----- speech bubble (rendered from the editor's mouth) -------------- */
+  .speech {
+    position: absolute;
+    top: -2%;
+    left: -10%;
+    width: 58%;
+    max-width: 280px;
+    z-index: 3;
+    opacity: 0;
+    transform: scale(0.7) translate(16px, 24px);
+    transform-origin: 90% 100%;
+    transition: opacity 0.22s ease-out, transform 0.36s cubic-bezier(0.2, 0.85, 0.25, 1.3);
+    pointer-events: none;
+  }
+  .speech.visible {
+    opacity: 1;
+    transform: scale(1) translate(0, 0);
+  }
+  .speech-body {
+    position: relative;
+    background: #ffffff;
+    color: var(--ink);
+    border-radius: 22px 22px 22px 6px;
+    padding: 14px 18px;
+    box-shadow:
+      0 14px 32px rgba(0,0,0,0.10),
+      0 2px 6px rgba(0,0,0,0.04),
+      inset 0 0 0 1px rgba(0,0,0,0.04);
+    font-size: 15px;
+    line-height: 1.42;
+    font-weight: 500;
+    z-index: 2;
+  }
+  .speech-tail {
+    /* Rotated diamond that visually merges with the bubble bottom-right
+       and points down toward the editor's mouth. The bubble's own shadow
+       hides the seam where they meet. */
+    position: absolute;
+    width: 22px; height: 22px;
+    background: #ffffff;
+    bottom: -7px;
+    right: 22px;
+    transform: rotate(45deg);
+    border-radius: 3px;
+    box-shadow:
+      4px 4px 10px rgba(0,0,0,0.08),
+      inset -1px -1px 0 rgba(0,0,0,0.04);
+    z-index: 1;
+  }
+  @media (max-width: 860px) {
+    .speech { top: -8%; left: 0; width: 70%; max-width: 220px; }
+    .speech-body { font-size: 13px; padding: 12px 14px; }
+  }
+
+  /* debug overlay (?dots in URL) — visual check on map positions */
+  .map-dot {
+    position: fixed;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: rgba(234, 88, 12, 0.85);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 100;
+  }
+  .map-dot.active { background: #16a34a; }
+  .map-dot .lbl {
+    position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    margin-top: 4px;
+    font-size: 11px; font-weight: 600; color: #111;
+    background: rgba(255,255,255,0.95); padding: 1px 6px; border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 860px) {
+    main { align-items: flex-start; padding-top: 24px; }
+    .hero {
+      grid-template-columns: 1fr;
+      gap: 18px;
+      padding: 16px 20px;
+    }
+    .hero-art { order: -1; max-width: 280px; justify-self: center; }
+    .prompt-form { max-width: 100%; }
+    .hero h1 { font-size: clamp(2rem, 7vw, 2.6rem); margin-bottom: 14px; }
+    .hero p.lede { font-size: 16px; margin-bottom: 20px; }
+  }
+  @media (max-height: 700px) and (min-width: 861px) {
+    .hero h1 { font-size: clamp(2.4rem, 5.4vw, 4.4rem); margin-bottom: 22px; }
+    .hero { gap: 36px; }
+    .hero-art { max-width: 420px; }
+  }
+</style>
+</head>
+<body>
+
+<main>
+  <section class="hero">
+    <div class="hero-text">
+      <h1>Make long-to-short form content <span class="accent">100x cheaper</span></h1>
+
+      <form class="prompt-form" id="prompt-form">
+        <input
+          class="prompt-input"
+          id="prompt"
+          type="text"
+          placeholder="Paste a YouTube URL…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="go-btn" type="submit" id="go">
+          Go <span class="arrow">→</span>
+        </button>
+        <a class="download-btn" id="download" href="editor.mp4" download="acq-clipper.mp4" aria-label="Download the generated MP4">
+          ↓ Download MP4
+        </a>
+      </form>
+    </div>
+
+    <div class="hero-art" id="art">
+      <img id="char" alt="" draggable="false" />
+      <video
+        id="char-video"
+        muted
+        playsinline
+        preload="none"
+        src="editor.mp4"
+      ></video>
+      <div class="speech" id="speech" aria-live="polite">
+        <div class="speech-body" id="speech-body"></div>
+        <div class="speech-tail"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  // ----- mouse → image map (runs only when no video is playing) -----------
+  const IMAGES = ["1.png", "2.png", "3.png", "4.png", "6.png"];
+  // Percentages are RELATIVE TO THE CHARACTER IMAGE bounding box
+  // (0% = left/top edge of the image, 100% = right/bottom edge).
+  // Eye-balled defaults from the screenshot; refine in /map.html.
+  const DEFAULT_POS = {
+    "1.png": { x: 55, y: 17 },   // up-right (above head)
+    "2.png": { x: 35, y: 27 },   // upper-left toward monitor
+    "3.png": { x: 35, y: 45 },   // mid-left below face
+    "4.png": { x: 52, y: 47 },   // keyboard
+    "6.png": { x: 75, y: 50 },   // far right
+  };
+  // v2 = image-relative coords (v1 was viewport-relative; ignored).
+  const LS_KEY = "editor_mouse_map_v2";
+  function loadPositions() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        const merged = Object.assign({}, DEFAULT_POS, JSON.parse(raw));
+        const cleaned = {};
+        for (const name of IMAGES) cleaned[name] = merged[name] || DEFAULT_POS[name];
+        return cleaned;
+      }
+    } catch {}
+    return JSON.parse(JSON.stringify(DEFAULT_POS));
+  }
+  const positions = loadPositions();
+
+  const charEl = document.getElementById("char");
+  const videoEl = document.getElementById("char-video");
+  const artEl = document.getElementById("art");
+  let currentImage = "6.png";
+  charEl.src = currentImage;
+  IMAGES.forEach(n => { const i = new Image(); i.src = n; });
+
+  // Project mouse position to character-image-relative percentages
+  // so the mapping is consistent regardless of where the image lives.
+  function mouseImagePct(mx, my) {
+    const r = charEl.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return { x: 50, y: 50 };
+    return {
+      x: (mx - r.left) / r.width * 100,
+      y: (my - r.top) / r.height * 100,
+    };
+  }
+
+  function closestImage(mx, my) {
+    const p = mouseImagePct(mx, my);
+    let best = IMAGES[0], bestDist = Infinity;
+    for (const name of IMAGES) {
+      const q = positions[name];
+      const dx = q.x - p.x, dy = q.y - p.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestDist) { bestDist = d; best = name; }
+    }
+    return best;
+  }
+  let raf = null, pendingX = window.innerWidth / 2, pendingY = window.innerHeight / 2;
+  function schedule() {
+    if (raf || artEl.classList.contains("playing")) return;
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      const next = closestImage(pendingX, pendingY);
+      if (next !== currentImage) {
+        currentImage = next;
+        charEl.src = next;
+      }
+    });
+  }
+  document.addEventListener("mousemove", (e) => {
+    pendingX = e.clientX;
+    pendingY = e.clientY;
+    schedule();
+  });
+
+  // ----- ?dots debug overlay --------------------------------------------
+  // Visit /?dots to see where each image's mapped point lives. The dot for
+  // the currently-shown image turns green. Dots are positioned relative to
+  // the character image bounding box (the same coordinate space as the map).
+  if (new URLSearchParams(location.search).has("dots")) {
+    const dotEls = {};
+    for (const name of IMAGES) {
+      const el = document.createElement("div");
+      el.className = "map-dot";
+      el.dataset.name = name;
+      el.innerHTML = `<span class="lbl">${name.replace(".png","")}</span>`;
+      document.body.appendChild(el);
+      dotEls[name] = el;
+    }
+    function placeDots() {
+      const r = charEl.getBoundingClientRect();
+      for (const name of IMAGES) {
+        const p = positions[name];
+        dotEls[name].style.left = (r.left + p.x / 100 * r.width) + "px";
+        dotEls[name].style.top = (r.top + p.y / 100 * r.height) + "px";
+        dotEls[name].classList.toggle("active", name === currentImage);
+      }
+    }
+    window.addEventListener("resize", placeDots);
+    // Also re-place every frame so the dots stay aligned to the image as
+    // the page lays out (e.g. fonts load, video swaps in/out).
+    (function tick(){ placeDots(); requestAnimationFrame(tick); })();
+  }
+
+  // ----- deferred video preload ------------------------------------------
+  // Users typically take a couple seconds to read the headline before they
+  // type. Wait ~1.5s after page load, then start fetching the video so
+  // pressing Go feels instant. We avoid `preload="auto"` on the <video> tag
+  // itself because that would compete with first-paint resources.
+  let preloadStarted = false;
+  function preloadVideo() {
+    if (preloadStarted) return;
+    preloadStarted = true;
+    // Switching preload kicks the browser to start downloading.
+    videoEl.preload = "auto";
+    videoEl.load();
+  }
+  window.addEventListener("load", () => {
+    setTimeout(preloadVideo, 1500);
+  });
+  // Also start the preload the moment they focus the input — likely they're
+  // about to hit Go.
+  document.getElementById("prompt").addEventListener("focus", preloadVideo, { once: true });
+
+  // ----- Go: decide between video reply or speech-bubble reply ----------
+  // Every prompt resolves to ONE of:
+  //   (a) a downloadable MP4 — we play the editor working, then surface a
+  //       Download button next to Go
+  //   (b) a spoken message — speech bubble from the editor's mouth
+  // The decision is driven by simple keyword matching today; swap in a
+  // real backend call later without touching the UI.
+  const VIDEO_KEYWORDS = [
+    "video", "clip", "short", "shorts", "edit", "cut",
+    "make", "create", "generate", "produce", "render",
+    "post", "youtube", "tiktok", "reel", "highlight", "compilation",
+  ];
+
+  function decideResponse(prompt) {
+    const text = prompt.toLowerCase();
+    const wantsVideo = VIDEO_KEYWORDS.some(k => text.includes(k));
+    if (wantsVideo) {
+      return { type: "video", url: "editor.mp4", filename: "acq-clipper.mp4" };
+    }
+    // Otherwise build a contextual reply.
+    let reply = "I'm built for short-form clips — try something like 'make a 30-second clip about pricing'.";
+    if (text.endsWith("?")) {
+      reply = "Great question — but I'm here to clip videos. Tell me what you want to cut.";
+    } else if (text.length < 4) {
+      reply = "Tell me what you want clipped and I'll get to work.";
+    } else if (text.includes("hello") || text.includes("hi ") || text.startsWith("hi") || text.includes("hey")) {
+      reply = "Hey! Drop me a video and tell me what to clip.";
+    }
+    return { type: "message", text: reply };
+  }
+
+  const form = document.getElementById("prompt-form");
+  const goBtn = document.getElementById("go");
+  const promptEl = document.getElementById("prompt");
+  const speechEl = document.getElementById("speech");
+  const speechBodyEl = document.getElementById("speech-body");
+  const downloadEl = document.getElementById("download");
+
+  let speechHideTimer = null;
+  function showSpeech(text) {
+    speechBodyEl.textContent = text;
+    speechEl.classList.add("visible");
+    clearTimeout(speechHideTimer);
+    speechHideTimer = setTimeout(() => speechEl.classList.remove("visible"), 10000);
+  }
+  function hideSpeech() {
+    speechEl.classList.remove("visible");
+    clearTimeout(speechHideTimer);
+  }
+
+  function showDownload(url, filename) {
+    downloadEl.href = url;
+    downloadEl.setAttribute("download", filename);
+    downloadEl.classList.add("shown");
+  }
+  function hideDownload() { downloadEl.classList.remove("shown"); }
+
+  // ----- real backend wiring -------------------------------------------------
+  // Submitting fires off POST /api/process and starts polling /api/status for
+  // live agent decisions. Each new decision pops a fresh speech bubble. When
+  // the process call returns the final outbox, we surface the download button.
+  function genJobId() {
+    return "job_" + Math.random().toString(36).slice(2, 14);
+  }
+
+  function pickWorker() {
+    // optional ?worker=swap in URL flips to the deterministic worker
+    const w = new URLSearchParams(location.search).get("worker");
+    return w === "swap" ? "swap" : "claude";
+  }
+
+  function decisionToBubble(d) {
+    // d shape: { turn, situation, action, reasoning, ts }
+    return d.reasoning || d.action || d.situation || "…";
+  }
+
+  async function pollStatus(jobId, stopSignal) {
+    let lastSeen = 0;
+    while (!stopSignal.done) {
+      try {
+        const r = await fetch("/api/status?job_id=" + encodeURIComponent(jobId), { cache: "no-store" });
+        if (r.ok) {
+          const j = await r.json();
+          const ds = Array.isArray(j.decisions) ? j.decisions : [];
+          for (let i = lastSeen; i < ds.length; i++) {
+            showSpeech(decisionToBubble(ds[i]));
+          }
+          lastSeen = ds.length;
+        }
+      } catch (e) { /* swallow — keep polling */ }
+      await new Promise(res => setTimeout(res, 1500));
+    }
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const url = promptEl.value.trim();
+    if (!url) return;
+    goBtn.disabled = true;
+    hideDownload();
+    showSpeech("Got it — booting up the agent…");
+
+    // Play the editor video to look busy during the run.
+    preloadVideo();
+    artEl.classList.add("playing");
+    try { videoEl.currentTime = 0; videoEl.loop = true; await videoEl.play(); }
+    catch (err) { console.warn("video.play() rejected:", err); }
+
+    const jobId = genJobId();
+    const worker = pickWorker();
+    const stop = { done: false };
+    const polling = pollStatus(jobId, stop);
+
+    let outbox = null;
+    let errText = null;
+    try {
+      const resp = await fetch("/api/process?worker=" + worker, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, job_id: jobId, worker }),
+      });
+      const text = await resp.text();
+      try { outbox = JSON.parse(text); }
+      catch { errText = "Server returned non-JSON (" + resp.status + ")"; }
+      if (!resp.ok && outbox) {
+        errText = outbox.detail || outbox.error || ("HTTP " + resp.status);
+      }
+    } catch (err) {
+      errText = "Network error: " + (err && err.message ? err.message : err);
+    } finally {
+      stop.done = true;
+      try { await polling; } catch {}
+      videoEl.loop = false;
+      videoEl.pause();
+      artEl.classList.remove("playing");
+      goBtn.disabled = false;
+    }
+
+    if (errText) {
+      showSpeech("⚠️ " + errText);
+      return;
+    }
+    const clips = (outbox && outbox.result_clips) || [];
+    const firstClip = clips[0];
+    const clipUrl = firstClip && (firstClip.url || firstClip.blob_url || firstClip.path);
+    if (clipUrl) {
+      showSpeech("✓ Done — your clip is ready.");
+      showDownload(clipUrl, "clip.mp4");
+    } else {
+      showSpeech("Finished, but no clip URL came back. Check the run logs.");
+    }
+  });
+
+  videoEl.addEventListener("ended", () => {
+    if (!videoEl.loop) artEl.classList.remove("playing");
+  });
+
+  // Typing a new prompt after a result clears the previous one so the UI
+  // stays clean.
+  promptEl.addEventListener("input", () => {
+    if (downloadEl.classList.contains("shown")) hideDownload();
+    if (speechEl.classList.contains("visible")) hideSpeech();
+  });
+</script>
+
+</body>
+</html>

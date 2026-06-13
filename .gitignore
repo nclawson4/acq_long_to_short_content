@@ -1,0 +1,63 @@
+# Vercel
+.vercel
+.vercelignore.bak
+
+# Node / Next
+node_modules/
+.next/
+.turbo/
+dist/
+out/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env files (never commit secrets)
+.env
+.env.local
+.env*.local
+
+# Pipeline runtime artifacts
+pipeline_runs/
+pipeline_runs.*/
+*.trace.json
+
+# Heavy media + datasets — kept on disk, not in git
+source_data/
+processing/
+shorts_ingest/
+outputs/
+public/clips/
+
+# Anything that looks like cached cookies (PII / session tokens)
+cookies.txt
+**/cookies.txt
+*.cookies
+
+# Local logs from dev / deploy
+*.log
+.next-dev.log
+.vercel-dev.log
+.vercel-deploy.log
+.tail.jsonl
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Claude Code workspace files
+.claude/

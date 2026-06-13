@@ -1,0 +1,23 @@
+node_modules
+.next
+.venv
+venv
+__pycache__
+*.pyc
+
+# Heavy runtime artifacts — don't ship to Vercel
+pipeline_runs/
+pipeline_runs.*/
+processing/
+source_data/
+shorts_ingest/
+outputs/
+*.trace.json
+
+# Local-only stuff
+.git
+.vscode
+.DS_Store
+HARNESS.md
+scripts/
+harness/test_*
