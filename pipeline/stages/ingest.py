@@ -29,7 +29,7 @@ from ..observability.tracer import traced
 from ..types import IngestResult
 
 
-MAX_DURATION_S = 8 * 60 + 30  # 8 minutes with 30s grace for rounding
+MAX_DURATION_S = 13 * 60 + 30  # 13 minutes with 30s grace for rounding
 INGEST_FIXED_COST_USD = 0.0   # yt-dlp itself is free; CPU is metered separately
 
 # Local cache produced by the validation pipeline. If a video_id from the
