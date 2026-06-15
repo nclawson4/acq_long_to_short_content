@@ -1,23 +1,24 @@
 """Vercel Python function — GET /api/status?job_id=...
 
-Returns the current JobState from Redis. Used by the frontend to poll
-progress during a long run.
+Proxies through to the mac-mini baseline runner's /status/<job_id>.
+
+Response shape the FE knows about:
+    {status: "queued"|"running"|"done"|"failed", blob_url?, error?, ...}
+
+The FE polls this until status is done|failed, then either shows the
+download button (status=done) or surfaces the error in a speech bubble.
 """
 from __future__ import annotations
 
 import json
-import sys
+import os
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-_repo_root = Path(__file__).resolve().parent.parent
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
 
-from pipeline.state import get_store  # noqa: E402
-
-import json as _json  # noqa: E402
+TUNNEL_URL = (os.environ.get("ACQ_TUNNEL_URL") or "").strip().rstrip("/")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -26,31 +27,39 @@ class handler(BaseHTTPRequestHandler):
         job_id = (qs.get("job_id") or [""])[0].strip()
         if not job_id:
             return self._reply(400, {"error": "missing_job_id"})
+        if not TUNNEL_URL:
+            return self._reply(503, {"error": "tunnel_not_configured"})
 
-        store = get_store()
-        state = store.load_job(job_id)
-        if state is None:
-            return self._reply(404, {"error": "job_not_found", "job_id": job_id})
-
-        # Include the spans and ledger entries — small (≤ a few KB) so this
-        # is fine to ship on a poll. The frontend gets live cost + per-stage
-        # status without a second round trip.
-        trace_entries = store.read_trace(job_id)
-        ledger_entries = store.read_ledger(job_id)
-        # Decisions live in their own list so the speech-bubble UI can poll
-        # them. Both store backends store with RPUSH semantics under the hood,
-        # so lrange returns them in chronological order — no flip needed.
+        req = urllib.request.Request(
+            f"{TUNNEL_URL}/status/{job_id}",
+            headers={
+                "user-agent": "acq-clipper-proxy/1.0",
+                "bypass-tunnel-reminder": "1",
+                "ngrok-skip-browser-warning": "1",
+            },
+        )
         try:
-            raw_decisions = store._b.lrange(f"job:{job_id}:decisions")
-            decisions = [_json.loads(s) for s in raw_decisions]
-        except Exception:
-            decisions = []
+            with urllib.request.urlopen(req, timeout=10) as r:
+                upstream_body = r.read()
+                upstream_status = r.status
+        except urllib.error.HTTPError as e:
+            try:
+                upstream_body = e.read()
+                upstream_status = e.code
+            except Exception:
+                upstream_body = b"{}"
+                upstream_status = e.code
+        except Exception as e:
+            return self._reply(
+                502,
+                {"error": "tunnel_unreachable", "detail": f"{type(e).__name__}: {e}"},
+            )
 
-        payload = state.model_dump(mode="json")
-        payload["trace"] = trace_entries
-        payload["ledger"] = ledger_entries
-        payload["decisions"] = decisions
-        return self._reply(200, payload)
+        try:
+            obj = json.loads(upstream_body)
+        except json.JSONDecodeError:
+            obj = {"status": "unknown", "raw": upstream_body.decode("utf-8", "replace")}
+        return self._reply(upstream_status, obj)
 
     def _reply(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, default=str).encode("utf-8")

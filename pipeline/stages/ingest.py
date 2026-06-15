@@ -36,6 +36,10 @@ INGEST_FIXED_COST_USD = 0.0   # yt-dlp itself is free; CPU is metered separately
 # requested URL is already present here we skip the download.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CACHED_VIDEOS_DIR = _REPO_ROOT / "source_data" / "videos"
+# Vercel runtime cache: /api/ingest predownloads the mp4 into this dir before
+# /api/process kicks the harness, so the cache-hit branch below picks it up
+# instead of trying yt-dlp (which YouTube blocks for datacenter IPs).
+_PREFETCH_DIR = Path("/tmp/prefetched")
 
 
 class IngestFailed(Exception):
@@ -76,7 +80,12 @@ def ingest(url: str, workdir: Path, *, job_id: str) -> IngestResult:
     # pipeline without burning bandwidth.
     cached_id = _extract_video_id(url)
     if cached_id:
-        cached_video = _CACHED_VIDEOS_DIR / f"{cached_id}.mp4"
+        prefetched = _PREFETCH_DIR / f"{cached_id}.mp4"
+        local_cached = _CACHED_VIDEOS_DIR / f"{cached_id}.mp4"
+        cached_video = (
+            prefetched if prefetched.exists() and prefetched.stat().st_size > 0
+            else local_cached
+        )
         cached_info = _REPO_ROOT / "source_data" / "video_info" / f"{cached_id}.info.json"
         if cached_video.exists() and cached_video.stat().st_size > 0:
             duration = 0.0

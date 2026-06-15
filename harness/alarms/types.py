@@ -85,6 +85,14 @@ class AlarmBus:
     def fire(self, alarm: Alarm) -> Alarm:
         with self._lock:
             self._alarms.append(alarm)
+        # Push high-severity alarms to the external incident webhook (no-op
+        # if ACQ_ALARM_WEBHOOK_URL is unset). Best-effort, non-blocking — a
+        # webhook failure must never break the pipeline.
+        try:
+            from .notifier import notify_async
+            notify_async(alarm)
+        except Exception:
+            pass
         return alarm
 
     def all(self) -> list[Alarm]:

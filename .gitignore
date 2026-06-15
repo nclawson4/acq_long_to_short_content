@@ -61,3 +61,24 @@ Thumbs.db
 
 # Claude Code workspace files
 .claude/
+
+.env*.local
+
+# Homebox runtime artifacts (this is a workspace for the local pipeline
+# runner — only the source scripts/server are tracked; secrets, derived
+# trees, and per-run state stay out of git)
+homebox/.shared-secret.local
+homebox/.ngrok-path
+homebox/.env*
+homebox/.env-*
+homebox/baseline/
+homebox/jobs/
+homebox/batch_*.log
+homebox/batch_*_results.md
+homebox/.preview-server.log
+homebox/.vercel-deploy.log
+homebox/.next-dev.log
+
+# Local logs from this PC's preview/dev sessions
+.preview-server.log
+.taebaz*.log
