@@ -37,7 +37,7 @@ Claude Haiku 4.5 is also called once per clip for caption-text correction (fixin
 
 ## Guardrails — the part that makes it worth running
 
-Validation isn't graded after the fact. It's enforced in code, in advance. The pipeline doesn't trust the model — it trusts checks. Across **7 stages** there are typed checkpoints raising **21 named alarms**; anything that misses a check gets retried, dropped, or escalated.
+Validation isn't graded after the fact. It's enforced in code, in advance. Before any clip ships, it goes through a **QC gate of 8 checks** against the finished mp4 — anchored to direct ffprobe and ffmpeg ebur128 reads, not to the tools that produced the clip. A single failure drops it. After the run, **3 more run-level checks** grade the whole job before it's marked done. Across the pipeline there are **19 named alarms** the harness can raise, each tied to a recommended action.
 
 Three layers, in priority order:
 
@@ -58,7 +58,7 @@ Two operators are watching every run:
 
 A pipeline that nobody can see is a pipeline that doesn't work. Three layers make sure that every kind of failure leaves a paged human, not a stuck spinner.
 
-**1. Typed alarms inside the run.** Every guardrail, checkpoint, and tool fires named alarms with a severity (info / warning / error / critical) and a recommended action (`retry_stage`, `drop_clip`, `escalate_human`, `abort_run`). 21 alarm names are pre-registered in `harness/alarms/taxonomy.py` so no stage can invent its own.
+**1. Typed alarms inside the run.** Every guardrail, checkpoint, and tool fires named alarms with a severity (info / warning / error / critical) and a recommended action (`retry_stage`, `drop_clip`, `escalate_human`, `abort_run`). 19 alarm names are pre-registered in `harness/alarms/taxonomy.py` so no stage can invent its own.
 
 **2. Webhook on error + critical.** Every `error` or `critical` alarm posts to `ACQ_ALARM_WEBHOOK_URL` in the background. **Slack**, **Discord**, or **PagerDuty Events v2** are auto-detected by URL. Payload includes alarm name, stage, recommended action, and context. No webhook configured = silent no-op; the pipeline never blocks on the call.
 
