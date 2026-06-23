@@ -44,7 +44,7 @@ def main() -> int:
         help="Stable job id (auto-generated if omitted)",
     )
     parser.add_argument(
-        "--worker", default=os.environ.get("WORKER", "claude"),
+        "--worker", default=os.environ.get("WORKER", "swap"),
         choices=["claude", "swap"],
         help="Which worker drives the loop. 'swap' is the bonus second worker.",
     )

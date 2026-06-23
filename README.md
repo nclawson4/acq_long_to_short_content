@@ -20,7 +20,7 @@ The pipeline runs the entire loop end-to-end without a human:
 ingest → transcribe → pick_timestamps → crop → correct_captions → add_captions → finalize
 ```
 
-Every stage is a checkpoint. When a stage fails or trips a typed alarm, the orchestrator picks the recommended action from a closed set: `retry_stage`, `retry_with_adjusted_args`, `drop_clip`, `escalate_human`, or `abort_run`. The decision logic is deterministic — there is no LLM in the loop driver. The harness governs every move so nothing goes off the rails silently.
+Every stage is a checkpoint. When a stage fails or trips a typed alarm, the pipeline picks the recommended action from a closed set: `retry_stage`, `retry_with_adjusted_args`, `drop_clip`, `escalate_human`, or `abort_run`. The decision logic is deterministic — there is no LLM in the loop driver. This was a deliberate choice: a deterministic control path performed better in practice and avoided the unnecessary complexity and cost of putting a model in the loop just to make routing decisions a few rules can make reliably. The harness governs every move so nothing goes off the rails silently.
 
 ## The tools — built in-house
 
@@ -28,12 +28,12 @@ The hard parts aren't outsourced to a black-box SaaS. Each tool was built and tu
 
 | Tool | What it does |
 |---|---|
-| **YOLOv8 body cropper** | Detects the speaker's body frame-by-frame and centers a vertical 1080×1920 crop on it — no static crop, no jump cuts mid-sentence. |
-| **Haiku scene picker** | Reads the transcript and picks the highest-impact moment, 15 to 150 seconds long. Claude Haiku 4.5 — cheap, fast, smart enough to pick well. |
+| **YOLOv8 face cropper** | Detects the speaker's face frame-by-frame and centers a vertical 1080×1920 crop on it — no static crop, no jump cuts mid-sentence. |
+| **Heuristic scene picker** | Reads the transcript and picks the highest-impact moment, 15 to 150 seconds long. A deterministic heuristic — no LLM call, no per-clip token cost. |
 | **Deepgram Nova-3 transcription** | Word-level timestamps from Deepgram Nova-3. Feeds scene picking and the caption burn-in step. |
 | **libass + ffmpeg caption burn-in** | Renders the corrected transcript as burnt-in yellow captions sized for mobile. Done in ffmpeg via the libass subtitles filter; not by Deepgram. |
 
-Claude Haiku 4.5 is also called once per clip for caption-text correction (fixing transcription mistakes word-by-word before burn-in). That's the only LLM in the per-clip path; the orchestrator that decides retry/drop/abort is fully deterministic.
+Claude Haiku 4.5 is also called once per clip for caption-text correction (fixing transcription mistakes word-by-word before burn-in). That's the only LLM in the per-clip path; the rest of the pipeline — including every retry/drop/abort decision — runs fully deterministically.
 
 ## Guardrails — the part that makes it worth running
 
@@ -91,7 +91,7 @@ Where each $0.054 goes:
 | Caption burn-in (ffmpeg + libass) | $0.0100 |
 | Transcribe (Deepgram Nova-3) | $0.0085 |
 | Finalize + upload (Vercel Blob) | $0.0030 |
-| Pick best moment (Claude Haiku 4.5) | $0.0001 |
+| Pick best moment (heuristic, no LLM) | $0.0001 |
 | Download (yt-dlp) + ingest | $0.0000 |
 | **Total per clip (averaged)** | **$0.054** |
 
@@ -119,16 +119,34 @@ public/          — The actual frontend: hero, validation, failure-recovery, co
                    sections, animated editor character, live speech bubbles
 agents/          — ClaudeWorker (LLM-driven) and SwapWorker (deterministic)
 harness/         — Loop governance: alarms (with webhook notifier), guardrails,
-                   limits, ledger, tracing
-pipeline/        — Deterministic orchestrator + stage implementations: ingest,
-                   transcribe, pick_timestamps, crop, correct_captions,
-                   add_captions, finalize
-processing/      — In-house tool implementations (acq_clipper YOLO cropper,
-                   yellow_captions burn-in, find_moments scene picker)
+                   and limits; re-exports the cost ledger + tracer from
+                   pipeline/observability as the canonical harness surface
+pipeline/        — Deterministic pipeline driver + stage implementations.
+                   pipeline/stages/ holds ingest, transcribe, correct_captions,
+                   and finalize; pick_timestamps, crop, and add_captions are
+                   dispatched as tools (pipeline/tools/ → external tool packages)
+(external tools) — Not vendored in this repo: acq_clipper (YOLO face cropper,
+                   its own ML deps — opencv, numpy, onnxruntime), yellow_captions
+                   (burn-in), and find_moments (scene picker) are in-house tool
+                   packages the pipeline imports lazily, not a local directory
 homebox/         — Local pipeline runner + ngrok tunnel scripts + batch tooling
                    for the box that backs the live site
 scripts/         — CLI entrypoints (run_harness.py, resume_harness.py)
 ```
+
+## Next steps: hardening observability
+
+The failure-recovery story is solid, but the cron heartbeat is not yet at its
+full design. Planned hardening:
+
+- Today the Vercel-cron heartbeat probes the tunnel/runner, the shared secret,
+  and the blob token, and pages on any of those.
+- Enforce the "busy too long" check (`ACQ_HEARTBEAT_MAX_BUSY_MIN`) — the
+  heartbeat reads this threshold but does not yet act on it.
+- Add a proposed "no successful run in N hours" staleness check — a new
+  threshold that is not yet implemented (no env var or logic exists for it).
+- Route both conditions to the same `ACQ_ALARM_WEBHOOK_URL` alarm webhook the
+  other checks already use, so a stalled box pages on-call.
 
 ## License
 

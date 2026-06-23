@@ -1019,7 +1019,7 @@
       <div class="cost-row"><span class="stage">Caption correction (Claude Haiku 4.5)</span><span class="v">$0.0113</span></div>
       <div class="cost-row"><span class="stage">Transcribe (Deepgram Nova-3)</span><span class="v">$0.0085</span></div>
       <div class="cost-row"><span class="stage">Finalize + upload (Vercel Blob)</span><span class="v">$0.0030</span></div>
-      <div class="cost-row"><span class="stage">Pick best moment (Claude Haiku 4.5)</span><span class="v">$0.0001</span></div>
+      <div class="cost-row"><span class="stage">Pick best moment (heuristic scene picker — no LLM)</span><span class="v">$0.0001</span></div>
       <div class="cost-row"><span class="stage">Download (yt-dlp) + ingest</span><span class="v">$0.0000</span></div>
       <div class="cost-row"><span class="stage">Total per clip (averaged)</span><span class="v">$0.054</span></div>
     </div>
@@ -1236,7 +1236,7 @@
     "Pulling the video from YouTube…",
     "Sending audio to Deepgram for transcription…",
     "Parsing word-level timestamps…",
-    "Asking Claude Haiku to pick the strongest moment…",
+    "Scoring transcript moments to pick the strongest…",
     "Running YOLOv8 face detection frame by frame…",
     "Smoothing the crop track with an EMA filter…",
     "Cropping to 9:16 vertical…",
@@ -1333,8 +1333,8 @@
     let errText = null;
     let blobUrl = null;
     try {
-      // Kick off the deterministic pipeline run on the mac mini (via Vercel
-      // proxy → localtunnel → mac). Returns 202 + {job_id} immediately.
+      // Kick off the deterministic pipeline run on the home box (via Vercel
+      // proxy → localtunnel → home box). Returns 202 + {job_id} immediately.
       const resp = await fetch("/api/process", {
         method: "POST",
         headers: { "content-type": "application/json" },

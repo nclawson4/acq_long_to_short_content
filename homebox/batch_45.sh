@@ -1,6 +1,6 @@
 #!/bin/bash
 # Batch-runs every URL in source_data/urls.txt through the live site
-# (Vercel proxy → mac mini). Sequential — mac server has a single-run lock.
+# (Vercel proxy → home box). Sequential — home box has a single-run lock.
 # Appends one result line per video to BATCH_RESULTS so it can be tail-watched.
 
 set -uo pipefail

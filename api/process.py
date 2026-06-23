@@ -1,6 +1,6 @@
 """Vercel Python function — POST /api/process.
 
-Thin proxy in front of the mac-mini baseline runner. Forwards `{url}` to
+Thin proxy in front of the home-box baseline runner. Forwards `{url}` to
 ACQ_TUNNEL_URL/run, returns the {job_id, status} the runner echoes back.
 
 The runner is async: this returns immediately with a job id and the FE

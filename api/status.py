@@ -1,6 +1,6 @@
 """Vercel Python function — GET /api/status?job_id=...
 
-Proxies through to the mac-mini baseline runner's /status/<job_id>.
+Proxies through to the home-box baseline runner's /status/<job_id>.
 
 Response shape the FE knows about:
     {status: "queued"|"running"|"done"|"failed", blob_url?, error?, ...}
